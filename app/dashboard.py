@@ -1,5 +1,5 @@
 import streamlit as st
-from db_utils import get_symbols, get_price_data
+from modules.db_utils import get_symbols, get_price_data
 from indicators import MA, RSI, MACD
 import plotly.graph_objs as go
 
