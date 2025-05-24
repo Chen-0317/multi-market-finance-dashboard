@@ -1,7 +1,3 @@
 streamlit
-yfinance
 pandas
-sqlalchemy
-pandas-ta
 plotly
-python-dotenv
