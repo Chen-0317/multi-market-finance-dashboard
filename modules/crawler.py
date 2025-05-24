@@ -1,26 +1,17 @@
-import yfinance as yf
-from db_utils import upsert_price_data, get_symbols, get_latest_date
-import pandas as pd
+# crawler.py
+# 預留檔案，用於將來自訂資料抓取，例如台股匯率等非 yfinance 資料來源
 
-def fetch_and_update(symbol: str):
-    last_date = get_latest_date(symbol)
-    if last_date:
-        start_date = pd.to_datetime(last_date) + pd.Timedelta(days=1)
-    else:
-        start_date = "2000-01-01"  # 或你需要的起始日期
+# 可包含：
+# - requests / BeautifulSoup 解析網站
+# - API 抓取
+# - 專屬轉換格式成 DataFrame
 
-    df = yf.download(symbol, start=start_date)
-    if df.empty:
-        print(f"No new data for {symbol}")
-        return
-    
-    upsert_price_data(df, symbol)
-    print(f"Updated data for {symbol} from {start_date.date()}")
-
-def update_all_symbols():
-    symbols = get_symbols()
-    for symbol in symbols['symbol']:
-        fetch_and_update(symbol)
-
-if __name__ == "__main__":
-    update_all_symbols()
+# 範例框架：
+# import requests
+# import pandas as pd
+#
+# def fetch_custom_data():
+#     response = requests.get("https://example.com/data")
+#     data = response.json()
+#     df = pd.DataFrame(data)
+#     return df

@@ -1,0 +1,50 @@
+import plotly.graph_objects as go
+
+def plot_price_volume(df, title="價格走勢圖"):
+    fig = go.Figure()
+
+    # 收盤價折線圖
+    fig.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=df["close"],
+            mode="lines",
+            name="收盤價",
+            line=dict(color="#1f77b4")
+        )
+    )
+
+    # 成交量長條圖（如有）
+    if "volume" in df.columns:
+        fig.add_trace(
+            go.Bar(
+                x=df["date"],
+                y=df["volume"],
+                name="成交量",
+                yaxis="y2",
+                opacity=0.3,
+                marker_color="orange"
+            )
+        )
+
+        fig.update_layout(
+            yaxis2=dict(
+                title="成交量",
+                overlaying="y",
+                side="right",
+                showgrid=False,
+                rangemode="tozero"
+            ),
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="日期",
+        yaxis_title="價格",
+        hovermode="x unified",
+        legend=dict(x=0, y=1.1, orientation="h"),
+        margin=dict(l=40, r=40, t=40, b=40),
+        height=500
+    )
+    
+    return fig
