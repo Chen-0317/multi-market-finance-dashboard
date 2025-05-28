@@ -7,52 +7,16 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from datetime import datetime, timedelta
 from modules import auto_update, indicators
-
-
-from modules.db_utils import get_symbols, get_price_data
+from modules.db_utils import get_symbols, get_price_data, load_data
 from modules.plot_utils import plot_price_volume
 
+if "compare_mode" not in st.session_state:
+    st.session_state.compare_mode = False
+    
 st.set_page_config("📈 金融資料視覺化", layout="wide")
 st.sidebar.title("📌 選擇條件")
 
 DB_PATH = 'data/finance_data.db'
-
-if st.button("更新資料"):
-    symbols = ['AAPL', 'MSFT', 'TSLA']  # 可換成你資料庫的標的清單
-    with st.spinner("資料更新中..."):
-        auto_update.update_data(symbols, DB_PATH)
-    st.success("資料更新完成！")
-
-# Step 2: 從資料庫讀取資料
-def load_data(symbol, db_path=DB_PATH):
-    conn = sqlite3.connect("data/finance_data.db")
-    query = """
-    SELECT p.date, p.open, p.high, p.low, p.close, p.volume
-    FROM price_data p
-    JOIN symbols s ON p.symbol_id = s.id
-    WHERE s.symbol = ?
-    ORDER BY p.date
-"""
-    df = pd.read_sql(query, conn, params=(symbol,))
-    conn.close()
-    df['date'] = pd.to_datetime(df['date'])
-    return df
-
-# Step 3: 選擇股票並計算指標
-symbol_selected = st.selectbox("選擇股票", ['AAPL', 'MSFT', 'TSLA'])
-df = load_data(symbol_selected)
-
-if not df.empty:
-    df = indicators.calculate_ma(df)
-    df = indicators.calculate_rsi(df)
-
-    st.line_chart(df.set_index('date')[['close', 'MA20', 'rsi14']])
-else:
-    st.warning("查無資料")
-
-if "compare_mode" not in st.session_state:
-    st.session_state.compare_mode = False
-
 type_mapping = {
     'stock': '股價',
     'currency': '匯率',
@@ -85,10 +49,15 @@ if st.sidebar.button("📈 多標的比較"):
 
 df = get_price_data(selected.id, start_date, end_date)
 aapl_df = df[["date", "close", "volume"]].copy()
-usdtwd_id = symbols_df[symbols_df["symbol"] == "USDTWD=X"]["id"].values[0]
-usd_twd_df = get_price_data(usdtwd_id, start_date, end_date)[["date", "close"]]
 
-# st.sidebar.dataframe(symbols_df)
+# print(symbols_df["symbol"].unique())  # 看有哪些 symbol
+# print(symbols_df[symbols_df["symbol"] == "USDTWD=X"])
+
+# symbols_df["symbol"] = symbols_df["symbol"].str.strip()
+# usdtwd_id = symbols_df[symbols_df["symbol"] == "USDTWD=X"]["id"].values[0]
+
+usd_twd_df = get_price_data(2, start_date, end_date)
+# print(usd_twd_df)
 
 if not st.session_state.compare_mode:
     st.title(f"📊 {selected.name} ({selected.symbol}) 歷史走勢")
@@ -123,17 +92,36 @@ if not st.session_state.compare_mode:
         if "volume" in aapl_df.columns:
             aapl_df.rename(columns={"volume": volume_col_name}, inplace=True)
         
+        # ✅ 嘗試從 close / adj_close 擷取匯率欄位
+        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]  # 欄位轉小寫
+        
+        if "adj_close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
+        elif "close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
+        else:
+            st.warning("⚠️ 無法找到 USD/TWD 匯率欄位（adj_close 或 close），請確認資料格式正確")
+            st.write("⚠️ 匯率資料欄位為：", usd_twd_df.columns.tolist())
+            usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])  # 保持 merge 時不會報錯
+
+        # ✅ 標準化日期格式
+        aapl_df['date'] = pd.to_datetime(aapl_df['date']).dt.date
+        usd_twd_df['date'] = pd.to_datetime(usd_twd_df['date']).dt.date
+        
+        # ✅ 標準化欄位名稱
+        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
         usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
 
-        print(usd_twd_df.head())
-        print(usd_twd_df.info())
-
-        # print("aapl_df 日期範圍：", aapl_df["date"].min(), "~", aapl_df["date"].max())
-        # print("usd_twd_df 日期範圍：", usd_twd_df["date"].min(), "~", usd_twd_df["date"].max())
-        # print("aapl_df['date'].dtype =", aapl_df['date'].dtype)
-        # print("usd_twd_df['date'].dtype =", usd_twd_df['date'].dtype)
-
+        # st.write("✅ aapl_df 預覽", aapl_df.head())
+        # st.write("✅ usd_twd_df 預覽", usd_twd_df.head())
+        # st.write("✅ 匯率欄位名稱", usd_twd_df.columns.tolist())
+        # st.write("✅ 匯率資料長度", len(usd_twd_df))
+        
         merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
+
+        # st.write("✅ 合併後 preview", merged.head(10))
+        # st.write("✅ 合併後匯率 NaN 數量：", merged["usd_to_twd"].isna().sum())
+
         merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
     
         # 中文資料表
@@ -142,7 +130,7 @@ if not st.session_state.compare_mode:
         if volume_col_name in merged.columns:
             merged_zh["成交量"] = merged[volume_col_name]
     
-        # 整理 plot_df
+        # 整理 plot_df ( 資料清洗與轉換 ) 
         price_col = f"{symbol_name}_twd"
         merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
     
@@ -160,7 +148,7 @@ if not st.session_state.compare_mode:
         if plot_df.empty:
             st.warning("⚠️ 無法顯示圖表：股價或匯率資料可能缺失，請確認資料是否齊全。")
         else:
-            fig_twd = plot_price_volume(plot_df, title=f"📈 {symbol_name} 台幣計價走勢圖")
+            fig_twd = plot_price_volume(plot_df, title=f" {symbol_name} 台幣計價")
             st.plotly_chart(fig_twd, use_container_width=True)
     
         # 顯示表格
@@ -204,10 +192,34 @@ if st.session_state.compare_mode:
         )
 
         st.plotly_chart(fig_compare, use_container_width=True)
-
         st.subheader("📋 比較資料 (最後5筆)")
         st.dataframe(merged_df.tail(5), use_container_width=True)
 
     if st.button("🔙 返回單一標的分析"):
         st.session_state.compare_mode = False
-        st.experimental_rerun()
+        st.rerun()
+
+# -----------------------------------
+#            計算指標
+# -----------------------------------
+
+df_ind = load_data(selected.symbol)
+
+ma_window = st.sidebar.selectbox("MA 期數", [5, 20, 60], index=1)
+macd_window = st.sidebar.selectbox("MACD 期數", [9, 12, 26], index=1)
+
+if not df_ind.empty:
+    df_ind = indicators.calculate_ma(df_ind, window=ma_window)
+    df_ind = indicators.calculate_rsi(df_ind, length=14)
+    df_ind = indicators.calculate_macd(df_ind, base_period=macd_window)
+
+    ma_col = f'MA{ma_window}'
+    rsi_col = "rsi14"
+    macd_col = 'macd'
+
+    # st.write("👉 df_ind 欄位", df_ind.columns.tolist())
+    st.subheader(f"📐 技術指標（{selected.name}）")
+    st.line_chart(df_ind.set_index('date')[[macd_col, ma_col, rsi_col]])
+else:
+    st.warning("⚠️ 查無資料，請確認資料庫中是否有該標的歷史資料。")
+

@@ -189,7 +189,7 @@ def export_symbols_to_csv(conn):
 if __name__ == "__main__":
     targets = [
         {"symbol": "USDJPY=X", "name": "美元/日圓", "type": "currency", "region": "JP"},
-        {"symbol": "USDTWD=X", "name": "美元/台幣", "type": "currency", "region": "TW", "alias": "USD_TWD"},
+        {"symbol": "USDTWD=X", "name": "美元/台幣", "type": "currency", "region": "TW"},
         {"symbol": "TWDJPY=X", "name": "台幣/日圓", "type": "currency", "region": "JP"},
         {"symbol": "^GSPC", "name": "S&P 500", "type": "index", "region": "US"},
         {"symbol": "^IXIC", "name": "納斯達克綜合指數", "type": "index", "region": "US"},

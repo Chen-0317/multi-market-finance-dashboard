@@ -3,6 +3,7 @@ import pandas_ta as ta
 import sqlite3
 
 def calculate_ma(df, window=20):
+    df = df.copy()
     df[f'MA{window}'] = df['close'].rolling(window=window).mean()
     return df
 
@@ -10,11 +11,17 @@ def calculate_rsi(df, length=14):
     df[f"rsi{length}"] = ta.rsi(df["close"], length=length)
     return df
     
-def calculate_macd(df):
-    macd = ta.macd(df["close"], fast=12, slow=26, signal=9)
-    df["macd"] = macd["MACD_12_26_9"]
-    df["macd_signal"] = macd["MACDs_12_26_9"]
-    df["macd_hist"] = macd["MACDh_12_26_9"]
+def calculate_macd(df, base_period=12):
+    df = df.copy()
+    # 用 base_period 來決定 fast, slow, signal
+    fast = base_period
+    slow = base_period * 2
+    signal = max(base_period // 2, 1)
+
+    macd = ta.macd(df["close"], fast=fast, slow=slow, signal=signal)
+    df["macd"] = macd[f"MACD_{fast}_{slow}_{signal}"]
+    df["macd_signal"] = macd[f"MACDs_{fast}_{slow}_{signal}"]
+    df["macd_hist"] = macd[f"MACDh_{fast}_{slow}_{signal}"]
     return df
 
 def compute_indicators(df):

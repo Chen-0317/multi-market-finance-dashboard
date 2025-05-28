@@ -42,9 +42,15 @@ def plot_price_volume(df, title="價格走勢圖"):
         xaxis_title="日期",
         yaxis_title="價格",
         hovermode="x unified",
-        legend=dict(x=0, y=1.1, orientation="h"),
-        margin=dict(l=40, r=40, t=40, b=40),
-        height=500
+        legend=dict(
+            x=1,
+            y=1.05,
+            xanchor="right",
+            yanchor="bottom",
+            orientation="h"
+        ),
+        margin=dict(l=40, r=40, t=80, b=80),
+        height=600
     )
     
     return fig
