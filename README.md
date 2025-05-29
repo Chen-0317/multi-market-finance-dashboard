@@ -13,14 +13,20 @@
 # 專案結構
 finance-visualization/
 │
-├── app.py                   # 主程式入口 (Streamlit 應用)
+├── app/
+│   └── app.py               # 主程式入口 (Streamlit 應用)
 ├── data/
 │   └── finance_data.db      # SQLite 資料庫
 ├── modules/                 # 自訂模組
+│   ├── check_data.py        # 擷取資料庫資訊並顯示
 │   ├── auto_update.py       # 資料自動更新模組
 │   ├── db_utils.py          # 資料庫操作工具
 │   ├── indicators.py        # 技術指標計算模組
 │   └── plot_utils.py        # 繪圖函式模組
+├── sql/
+│   ├── create_tables.sql    # 定資料表的結構
+│   └── test_queries.sql     # 檢查資料表內容
+├── init_db.py               # 初始化並擷取歷史資料
 ├── requirements.txt         # 相依套件清單
 └── README.md                # 專案說明文件
 
