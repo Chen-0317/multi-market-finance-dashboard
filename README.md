@@ -97,8 +97,8 @@ streamlit run app/app.py
 - `modules/auto_update.py`：負責金融資料的自動下載與更新  
 - `modules/db_utils.py`：封裝 SQLite 資料庫的讀取與寫入函式  
 - `modules/indicators.py`：
-      計算技術指標（MA、RSI、MACD）
-      計算報酬與風險指標（累積報酬率、年化報酬率、波動率、最大回落） 
+    - 計算技術指標（MA、RSI、MACD）
+    - 計算報酬與風險指標（累積報酬率、年化報酬率、波動率、最大回落）
 - `modules/plot_utils.py`：自訂 Plotly 畫圖工具，如價格與成交量圖  
 
 ---
