@@ -74,10 +74,10 @@ streamlit run app/app.py
 3. 點擊「多標的比較」可切換至多標的模式，選擇多個標的後會顯示收盤價走勢比較圖。  
 4. 技術指標區塊可以調整 MA 期數及 MACD 參數，顯示該標的的 MA、RSI 與 MACD 指標走勢。
 5. 報酬與風險指標分析區塊會顯示：
-    累積報酬率（Cumulative Return）
-    年化報酬率（Annualized Return）
-    年化波動率（Annualized Volatility）
-    最大回落（Max Drawdown）
+   - **累積報酬率**（Cumulative Return）  
+   - **年化報酬率**（Annualized Return）  
+   - **年化波動率**（Annualized Volatility）  
+   - **最大回落**（Max Drawdown）  
 6. 按下返回按鈕可回到單一標的分析模式。  
 
 ---
