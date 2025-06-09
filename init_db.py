@@ -35,6 +35,15 @@ def init_db():
             UNIQUE(symbol_id, date)
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS converted_price_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            price_data_id INTEGER,
+            converted_price REAL,
+            converted_currency TEXT,
+            FOREIGN KEY (price_data_id) REFERENCES price_data(id)
+        )
+    ''')
 
     # 建立索引以提升查詢效能
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_symbol ON symbols(symbol)')
@@ -101,7 +110,7 @@ def fetch_and_save_data(cursor, conn, targets):
         print(f"清理後資料筆數：{len(df)}")
         print(df.head())
 
-        # 如果有自訂 alias，就覆蓋 symbol（用於統一名稱，像是 USD_TWD）
+        # 如果有自訂 alias，就覆蓋 symbol
         target_symbol = target.get("alias", target["symbol"])
         symbol_data = {
             "symbol": target_symbol,
@@ -126,6 +135,56 @@ def fetch_and_save_data(cursor, conn, targets):
                 row['close'],
                 row['volume']
             ))
+        
+            cursor.execute('SELECT id FROM price_data WHERE symbol_id = ? AND date = ?', (symbol_id, row['date'].date()))
+            price_data_id = cursor.fetchone()[0]
+        
+            # 判斷原始幣別
+            if target['region'] == 'US' or target['symbol'].endswith('.US'):
+                original_currency = 'USD'
+            elif target['region'] == 'TW' or target['symbol'].endswith('.TW'):
+                original_currency = 'TWD'
+            else:
+                original_currency = None
+        
+            # 匯率轉換：從 price_data 查詢 USDTWD=X 的最新收盤價
+            converted_price = None
+            converted_currency = None
+        
+            if original_currency in ['USD', 'TWD']:
+                # 找出 USDTWD=X 的 symbol_id
+                cursor.execute("SELECT id FROM symbols WHERE symbol = 'USDTWD=X'")
+                usd_twd_symbol_id_row = cursor.fetchone()
+        
+                if usd_twd_symbol_id_row:
+                    usd_twd_symbol_id = usd_twd_symbol_id_row[0]
+
+                    # 查詢最新一筆 USDTWD=X 的收盤價
+                    cursor.execute('''
+                        SELECT close FROM price_data
+                        WHERE symbol_id = ?
+                        ORDER BY date DESC
+                        LIMIT 1
+                    ''', (usd_twd_symbol_id,))
+                    rate_row = cursor.fetchone()
+        
+                    if rate_row:
+                        exchange_rate = rate_row[0]
+        
+                        if original_currency == 'USD':
+                            converted_price = row['close'] * exchange_rate
+                            converted_currency = 'TWD'
+                        elif original_currency == 'TWD':
+                            converted_price = row['close'] / exchange_rate
+                            converted_currency = 'USD'
+        
+            # 寫入 converted_price_data
+            if converted_price and converted_currency:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO converted_price_data
+                    (price_data_id, converted_price, converted_currency)
+                    VALUES (?, ?, ?)
+                ''', (price_data_id, converted_price, converted_currency))
         conn.commit()
 
 # ----------------------
@@ -147,6 +206,9 @@ def validate_data(cursor):
 # 顯示前幾筆資料
 # ----------------------
 def preview_data(conn, cursor):
+
+    pd.set_option('display.float_format', '{:.6f}'.format)
+
     print("\n📌 symbols 資料表內容：")
     df_symbols = pd.read_sql_query("SELECT * FROM symbols", conn)
     print(df_symbols)
@@ -155,16 +217,34 @@ def preview_data(conn, cursor):
     cursor.execute("SELECT COUNT(*) FROM price_data")
     print("📦 price_data 資料筆數：", cursor.fetchone()[0])
 
-    print("\n📊 price_data 前 10 筆資料：")
+    print("\n📊 price_data 近 10 筆資料：")
     df_prices = pd.read_sql_query("""
         SELECT s.symbol, p.date, p.open, p.high, p.low, p.close, p.volume
         FROM price_data p
         JOIN symbols s ON p.symbol_id = s.id
-        ORDER BY p.date
+        ORDER BY p.date DESC
         LIMIT 10
     """, conn)
     print(df_prices)
 
+    print("\n💱 每個 symbol 的最新轉換資料：")
+    df_converted = pd.read_sql_query("""
+        SELECT s.symbol, p.date, c.converted_price, c.converted_currency
+        FROM converted_price_data c
+        JOIN price_data p ON c.price_data_id = p.id
+        JOIN symbols s ON p.symbol_id = s.id
+        WHERE (s.symbol, p.date) IN (
+            SELECT s2.symbol, MAX(p2.date)
+            FROM converted_price_data c2
+            JOIN price_data p2 ON c2.price_data_id = p2.id
+            JOIN symbols s2 ON p2.symbol_id = s2.id
+            GROUP BY s2.symbol
+        )
+        ORDER BY p.date DESC
+    """, conn)
+    print(df_converted)
+
+    
 # ----------------------
 # 資料庫匯出為 SQL 檔案
 # ----------------------
@@ -188,8 +268,8 @@ def export_symbols_to_csv(conn):
 # ----------------------
 if __name__ == "__main__":
     targets = [
-        {"symbol": "USDJPY=X", "name": "美元/日圓", "type": "currency", "region": "JP"},
         {"symbol": "USDTWD=X", "name": "美元/台幣", "type": "currency", "region": "TW"},
+        {"symbol": "USDJPY=X", "name": "美元/日圓", "type": "currency", "region": "JP"},
         {"symbol": "TWDJPY=X", "name": "台幣/日圓", "type": "currency", "region": "JP"},
         {"symbol": "^GSPC", "name": "S&P 500", "type": "index", "region": "US"},
         {"symbol": "^IXIC", "name": "納斯達克綜合指數", "type": "index", "region": "US"},

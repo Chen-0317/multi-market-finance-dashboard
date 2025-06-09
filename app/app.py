@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import streamlit as st
 import pandas as pd
+import numpy as np
 import sqlite3
 import sys
 import os
@@ -44,6 +45,12 @@ default_start = today - timedelta(days=180)
 start_date = st.sidebar.date_input("起始日期", default_start)
 end_date = st.sidebar.date_input("結束日期", today)
 
+pricing_currency = st.sidebar.radio("計價幣別", ["台幣計價", "美元計價"])
+if pricing_currency == "台幣計價":
+    converted_currency = "TWD"
+else:
+    converted_currency = "USD"
+
 if st.sidebar.button("📈 多標的比較"):
     st.session_state.compare_mode = True
 
@@ -53,10 +60,12 @@ aapl_df = df[["date", "close", "volume"]].copy()
 # print(symbols_df["symbol"].unique())  # 看有哪些 symbol
 # print(symbols_df[symbols_df["symbol"] == "USDTWD=X"])
 
-# symbols_df["symbol"] = symbols_df["symbol"].str.strip()
-# usdtwd_id = symbols_df[symbols_df["symbol"] == "USDTWD=X"]["id"].values[0]
+symbols_df["symbol"] = symbols_df["symbol"].str.strip()
+usdtwd_id = symbols_df[symbols_df["symbol"] == "USDTWD=X"]["id"].values[0]
+# print(usdtwd_id)
+# print(type(usdtwd_id))
 
-usd_twd_df = get_price_data(2, start_date, end_date)
+usd_twd_df = get_price_data(int(usdtwd_id), start_date, end_date)
 # print(usd_twd_df)
 
 if not st.session_state.compare_mode:
@@ -81,9 +90,10 @@ if not st.session_state.compare_mode:
     st.markdown(f"**市場地區**：{region_label.get(selected.region, selected.region)}")
     st.markdown(f"**資料類型**：{type_desc.get(selected.type, selected.type)}")
 
-    st.plotly_chart(plot_price_volume(df, title=selected.name), use_container_width=True)
-
     if selected.region == "US" and selected.type == "stock":
+        
+        st.plotly_chart(plot_price_volume(df, title=selected.name), use_container_width=True)
+
         symbol_name = selected.name or selected.symbol
         price_col_name = f"{symbol_name}_usd"
         volume_col_name = f"{symbol_name}_volume"
@@ -157,56 +167,82 @@ if not st.session_state.compare_mode:
         if volume_col_name in merged.columns:
             show_cols.append("成交量")
         st.dataframe(merged_zh.tail(10)[show_cols], use_container_width=True)
+        
+    elif selected.type in ["etf", "index", "currency"]:
+        # 類似處理邏輯：適用於 ETF、指數、貨幣
+        symbol_name = selected.name or selected.symbol
+        price_col_name = f"{symbol_name}_usd"
+        volume_col_name = f"{symbol_name}_volume"
 
-if st.session_state.compare_mode:
-    st.header("📈 多標的收盤價比較")
+        aapl_df.rename(columns={"close": price_col_name}, inplace=True)
+        if "volume" in aapl_df.columns:
+            aapl_df.rename(columns={"volume": volume_col_name}, inplace=True)
+        
+        # 處理匯率
+        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
+        if "adj_close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
+        elif "close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
+        else:
+            st.warning("⚠️ 無法找到 USD/TWD 匯率欄位")
+            usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])
+    
+        aapl_df["date"] = pd.to_datetime(aapl_df["date"]).dt.date
+        usd_twd_df["date"] = pd.to_datetime(usd_twd_df["date"]).dt.date
+    
+        merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
+        merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
+    
+        # 根據 converted_currency 決定要顯示哪種計價
+        if converted_currency == "TWD":
+            price_col = f"{symbol_name}_twd"
+            currency_label = "價格（台幣)"
+        else:
+            price_col = price_col_name
+            currency_label = "價格（美元)"
+    
+        # 處理 plot_df
+        merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
+        plot_df = merged[["date", price_col]].copy()
+        plot_df.rename(columns={price_col: "close"}, inplace=True)
 
-    all_symbol_options = list(symbols_df.itertuples(index=False))
-    compare_selection = st.multiselect(
-        "選擇要比較的標的（可跨類型多選）",
-        all_symbol_options,
-        default=[selected],
-        format_func=lambda x: f"{x.name} ({x.symbol})"
-    )
+        if volume_col_name in merged.columns:
+            merged[volume_col_name] = pd.to_numeric(merged[volume_col_name], errors="coerce")
+            plot_df["volume"] = merged[volume_col_name]
+        
+        plot_df.dropna(subset=["close"], inplace=True)
+    
+        if plot_df.empty:
+            st.warning("⚠️ 無法顯示圖表：資料可能缺失")
+        else:
+            fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
+            st.plotly_chart(fig, use_container_width=True)
 
-    if compare_selection:
-        compare_data_list = []
-        for item in compare_selection:
-            temp_df = get_price_data(item.id, start_date, end_date)[["date", "close"]].copy()
-            temp_df.rename(columns={"close": f"{item.symbol}"}, inplace=True)
-            temp_df.set_index("date", inplace=True)
-            compare_data_list.append(temp_df)
-
-        merged_df = pd.concat(compare_data_list, axis=1).dropna()
-        normalized_df = merged_df / merged_df.iloc[0] * 100
-
-        fig_compare = go.Figure()
-        for col in merged_df.columns:
-            fig_compare.add_trace(go.Scatter(x=merged_df.index, y=merged_df[col], mode="lines", name=col))
-
-        fig_compare.update_layout(
-            title="📊 多標的收盤價比較",
-            xaxis_title="日期",
-            yaxis_title="收盤價",
-            hovermode="x unified"
-        )
-
-        st.plotly_chart(fig_compare, use_container_width=True)
-        st.subheader("📋 比較資料 (最後5筆)")
-        st.dataframe(merged_df.tail(5), use_container_width=True)
-
-    if st.button("🔙 返回單一標的分析"):
-        st.session_state.compare_mode = False
-        st.rerun()
+        # 顯示資料表
+        merged_zh = merged[["date", price_col_name, "usd_to_twd", f"{symbol_name}_twd"]].copy()
+        merged_zh.columns = ["日期", "價格（美元)", "匯率", "價格（台幣)"]
+    
+        if volume_col_name in merged.columns:
+            merged_zh["成交量"] = merged[volume_col_name]
+    
+        if converted_currency == "TWD":
+            show_cols = ["日期", "價格（台幣)", "匯率"]
+        else:
+            show_cols = ["日期", "價格（美元)", "匯率"]
+        if "成交量" in merged_zh.columns:
+            show_cols.append("成交量")
+    
+        st.dataframe(merged_zh[show_cols].tail(10), use_container_width=True)
 
 # -----------------------------------
 #            計算指標
 # -----------------------------------
 
 df_ind = load_data(selected.symbol)
-
 ma_window = st.sidebar.selectbox("MA 期數", [5, 20, 60], index=1)
 macd_window = st.sidebar.selectbox("MACD 期數", [9, 12, 26], index=1)
+
 
 if not df_ind.empty:
     df_ind = indicators.calculate_ma(df_ind, window=ma_window)
@@ -217,9 +253,175 @@ if not df_ind.empty:
     rsi_col = "rsi14"
     macd_col = 'macd'
 
-    # st.write("👉 df_ind 欄位", df_ind.columns.tolist())
     st.subheader(f"📐 技術指標（{selected.name}）")
     st.line_chart(df_ind.set_index('date')[[macd_col, ma_col, rsi_col]])
+
+    # --- 新增：計算報酬率指標 ---
+
+    # 只要有收盤價 close 就能算，這裡用 df_ind 的 close
+    df_ind = df_ind.dropna(subset=['close']).copy()
+    df_ind['return'] = df_ind['close'].pct_change()
+
+    # 累積報酬率
+    cumulative_return = (1 + df_ind['return']).prod() - 1
+
+    # 年化報酬率 (假設一年252交易日)
+    total_days = (df_ind['date'].max() - df_ind['date'].min()).days
+    annualized_return = (1 + cumulative_return) ** (252 / total_days) - 1 if total_days > 0 else np.nan
+
+    # 年化波動率
+    annualized_volatility = df_ind['return'].std() * np.sqrt(252)
+
+    # 計算最大回落 (MDD)
+    cumulative = (1 + df_ind['return']).cumprod()
+    rolling_max = cumulative.cummax()
+    drawdown = (cumulative - rolling_max) / rolling_max
+    max_drawdown = drawdown.min()
+
+    # 將結果整理成 DataFrame 方便繪圖
+    stats_df = pd.DataFrame({
+        "指標": ["累積報酬率", "年化報酬率", "年化波動率", "最大回落（MDD）"],
+        "數值": [cumulative_return, annualized_return, annualized_volatility, max_drawdown]
+    })
+
+    # 畫圖
+    fig_stats = go.Figure(go.Bar(
+        x=stats_df["指標"],
+        y=stats_df["數值"],
+        text=stats_df["數值"].apply(lambda x: f"{x:.2%}"),
+        textposition='auto',
+        marker_color=['blue', 'green', 'orange', 'red']
+    ))
+
+    fig_stats.update_layout(
+        title=f"{selected.name} 報酬率統計指標",
+        yaxis_tickformat=".2%",
+        yaxis_title="數值 (%)",
+        xaxis_title="指標",
+        margin=dict(t=40, b=40, l=40, r=40)
+    )
+
+    st.plotly_chart(fig_stats, use_container_width=True)
+
 else:
     st.warning("⚠️ 查無資料，請確認資料庫中是否有該標的歷史資料。")
 
+# -----------------------------------
+#            多標的收比較
+# -----------------------------------
+
+if st.session_state.compare_mode:
+    st.header("📈 多標的指標比較")
+
+    all_symbol_options = list(symbols_df.itertuples(index=False))
+    compare_selection = st.multiselect(
+        "選擇要比較的標的（可跨類型多選）",
+        all_symbol_options,
+        default=[selected],
+        format_func=lambda x: f"{x.name} ({x.symbol})"
+    )
+
+    indicator_options = [
+        "close", "rsi14", "MA5", "MA20", "MA60", "macd", 
+        "累積報酬率", "年化報酬率", "年化波動率", "最大回落（MDD）"
+    ]
+    selected_indicator = st.selectbox("選擇要比較的指標", indicator_options, index=0)
+
+    if compare_selection:
+        result_dict = {}
+        for item in compare_selection:
+            df = get_price_data(item.id, start_date, end_date).copy()
+            df["date"] = pd.to_datetime(df["date"])
+            df.set_index("date", inplace=True)
+            df = df.dropna(subset=["close"])
+
+            # 計算技術指標 (會自動加上 ma5, ma20, ma60, rsi14, macd...)
+            df_ind = indicators.compute_indicators(df)
+
+            if selected_indicator == "close":
+                series = df_ind["close"]
+                result_dict[item.symbol] = series
+
+            elif selected_indicator == "rsi14":
+                series = df_ind.get("rsi14")
+                result_dict[item.symbol] = series
+
+            elif selected_indicator.lower() in ["ma5", "ma20", "ma60"]:
+                ma_col = selected_indicator.upper()  # "MA5", "MA20", ...
+                series = df_ind.get(ma_col)
+                if series is not None:
+                    result_dict[item.symbol] = series
+
+            elif selected_indicator == "macd":
+                series = df_ind.get("macd")
+                result_dict[item.symbol] = series
+
+            elif selected_indicator == "累積報酬率":
+                daily_returns = df_ind["close"].pct_change().dropna()
+                cum_ret = indicators.cumulative_return(daily_returns)
+                result_dict[item.symbol] = cum_ret
+
+            elif selected_indicator == "年化報酬率":
+                daily_returns = df_ind["close"].pct_change().dropna()
+                ann_ret = indicators.annualized_return(daily_returns)
+                result_dict[item.symbol] = ann_ret
+
+            elif selected_indicator == "年化波動率":
+                daily_returns = df_ind["close"].pct_change().dropna()
+                ann_vol = indicators.annualized_volatility(daily_returns)
+                result_dict[item.symbol] = ann_vol
+
+            elif selected_indicator == "最大回落（MDD）":
+                daily_returns = df_ind["close"].pct_change().dropna()
+                mdd = indicators.max_drawdown(daily_returns)
+                result_dict[item.symbol] = mdd
+
+        if selected_indicator in ["close", "rsi14", "MA5", "MA20", "MA60", "macd"]:
+            combined_df = pd.concat(result_dict.values(), axis=1)
+            combined_df.columns = result_dict.keys()
+            combined_df.dropna(how='all', inplace=True)
+
+            fig = go.Figure()
+            for col in combined_df.columns:
+                fig.add_trace(go.Scatter(x=combined_df.index, y=combined_df[col], mode="lines", name=col))
+
+            fig.update_layout(
+                title=f"📊 多標的 {selected_indicator} 比較",
+                xaxis_title="日期",
+                yaxis_title=selected_indicator,
+                hovermode="x unified"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("📋 比較資料 (最後5筆)")
+            st.dataframe(combined_df.tail(5), use_container_width=True)
+
+        else:
+            summary_df = pd.DataFrame(result_dict, index=[0]).T
+            summary_df.columns = [selected_indicator]
+
+            st.subheader(f"📋 多標的 {selected_indicator} 比較")
+            st.dataframe(summary_df, use_container_width=True)
+
+            # 新增視覺化長條圖
+            fig = go.Figure()
+            for symbol, value in result_dict.items():
+                fig.add_trace(go.Bar(
+                    x=[symbol],
+                    y=[value],
+                    name=symbol,
+                    text=f"{value:.2%}" if '報酬率' in selected_indicator else f"{value:.2f}",
+                    textposition="auto"
+                ))
+        
+            fig.update_layout(
+                title=f"📊 多標的 {selected_indicator} 長條圖比較",
+                xaxis_title="標的",
+                yaxis_title=selected_indicator,
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    if st.button("🔙 返回單一標的分析"):
+        st.session_state.compare_mode = False
+        st.rerun()
