@@ -19,7 +19,8 @@ def init_db():
             symbol TEXT UNIQUE,
             name TEXT,
             type TEXT,
-            region TEXT
+            region TEXT,
+            currency TEXT
         )
     ''')
     cursor.execute('''
@@ -67,9 +68,9 @@ def init_db():
 # ----------------------
 def insert_symbol_get_id(cursor, conn, symbol_data):
     cursor.execute('''
-        INSERT OR IGNORE INTO symbols (symbol, name, type, region)
-        VALUES (?, ?, ?, ?)
-    ''', (symbol_data['symbol'], symbol_data['name'], symbol_data['type'], symbol_data['region']))
+        INSERT OR IGNORE INTO symbols (symbol, name, type, region, currency)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (symbol_data['symbol'], symbol_data['name'], symbol_data['type'], symbol_data['region'], symbol_data.get('currency')))
     conn.commit()
     cursor.execute('SELECT id FROM symbols WHERE symbol = ?', (symbol_data['symbol'],))
     return cursor.fetchone()[0]
@@ -116,7 +117,8 @@ def fetch_and_save_data(cursor, conn, targets):
             "symbol": target_symbol,
             "name": target["name"],
             "type": target["type"],
-            "region": target["region"]
+            "region": target["region"],
+            "currency": target.get("currency")
         }
         symbol_id = insert_symbol_get_id(cursor, conn, symbol_data)
 
@@ -268,19 +270,19 @@ def export_symbols_to_csv(conn):
 # ----------------------
 if __name__ == "__main__":
     targets = [
-        {"symbol": "USDTWD=X", "name": "美元/台幣", "type": "currency", "region": "TW"},
-        {"symbol": "USDJPY=X", "name": "美元/日圓", "type": "currency", "region": "JP"},
-        {"symbol": "TWDJPY=X", "name": "台幣/日圓", "type": "currency", "region": "JP"},
-        {"symbol": "^GSPC", "name": "S&P 500", "type": "index", "region": "US"},
-        {"symbol": "^IXIC", "name": "納斯達克綜合指數", "type": "index", "region": "US"},
-        {"symbol": "^DJI", "name": "道瓊斯工業平均指數", "type": "index", "region": "US"},
-        {"symbol": "URTH", "name": "MSCI全球指數", "type": "index", "region": "Global"},
-        {"symbol": "0050.TW", "name": "台灣50", "type": "etf", "region": "TW"},
-        {"symbol": "00878.TW", "name": "元大MSCI世界ETF", "type": "etf", "region": "TW"},
-        {"symbol": "00646.TW", "name": "富邦科技ETF", "type": "etf", "region": "TW"},
-        {"symbol": "00850.TW", "name": "元大台灣 ESG 永續 ETF", "type": "etf", "region": "TW"},
-        {"symbol": "AAPL", "name": "蘋果", "type": "stock", "region": "US"},
-        {"symbol": "MSFT", "name": "微軟", "type": "stock", "region": "US"}
+        {"symbol": "USDTWD=X", "name": "美元/台幣", "type": "currency", "region": "TW", "currency": "TWD"},
+        {"symbol": "USDJPY=X", "name": "美元/日圓", "type": "currency", "region": "JP", "currency": "JPY"},
+        {"symbol": "TWDJPY=X", "name": "台幣/日圓", "type": "currency", "region": "JP", "currency": "JPY"},
+        {"symbol": "^GSPC", "name": "S&P 500", "type": "index", "region": "US", "currency": "USD"},
+        {"symbol": "^IXIC", "name": "納斯達克綜合指數", "type": "index", "region": "US", "currency": "USD"},
+        {"symbol": "^DJI", "name": "道瓊斯工業平均指數", "type": "index", "region": "US", "currency": "USD"},
+        {"symbol": "URTH", "name": "MSCI全球指數", "type": "index", "region": "Global", "currency": "USD"},
+        {"symbol": "0050.TW", "name": "台灣50", "type": "etf", "region": "TW", "currency": "TWD"},
+        {"symbol": "00878.TW", "name": "元大MSCI世界ETF", "type": "etf", "region": "TW", "currency": "TWD"},
+        {"symbol": "00646.TW", "name": "富邦科技ETF", "type": "etf", "region": "TW", "currency": "TWD"},
+        {"symbol": "00850.TW", "name": "元大台灣 ESG 永續 ETF", "type": "etf", "region": "TW", "currency": "TWD"},
+        {"symbol": "AAPL", "name": "蘋果", "type": "stock", "region": "US", "currency": "USD"},
+        {"symbol": "MSFT", "name": "微軟", "type": "stock", "region": "US", "currency": "USD"}
     ]
 
     conn, cursor = init_db()

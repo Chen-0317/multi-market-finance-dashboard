@@ -10,7 +10,7 @@ def get_connection():
 
 def get_symbols():
     conn = get_connection()
-    df = pd.read_sql("SELECT id, symbol, name, type, region FROM symbols ORDER BY region, type", conn)
+    df = pd.read_sql("SELECT id, symbol, name, type, region, currency FROM symbols ORDER BY region, type", conn)
     conn.close()
     return df
 

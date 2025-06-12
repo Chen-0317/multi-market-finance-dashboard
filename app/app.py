@@ -177,63 +177,91 @@ if not st.session_state.compare_mode:
         aapl_df.rename(columns={"close": price_col_name}, inplace=True)
         if "volume" in aapl_df.columns:
             aapl_df.rename(columns={"volume": volume_col_name}, inplace=True)
-        
-        # 處理匯率
-        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
-        if "adj_close" in usd_twd_df.columns:
-            usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
-        elif "close" in usd_twd_df.columns:
-            usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
-        else:
-            st.warning("⚠️ 無法找到 USD/TWD 匯率欄位")
-            usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])
-    
+
         aapl_df["date"] = pd.to_datetime(aapl_df["date"]).dt.date
-        usd_twd_df["date"] = pd.to_datetime(usd_twd_df["date"]).dt.date
-    
-        merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
-        merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
-    
-        # 根據 converted_currency 決定要顯示哪種計價
-        if converted_currency == "TWD":
-            price_col = f"{symbol_name}_twd"
-            currency_label = "價格（台幣)"
-        else:
-            price_col = price_col_name
-            currency_label = "價格（美元)"
-    
-        # 處理 plot_df
-        merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
-        plot_df = merged[["date", price_col]].copy()
-        plot_df.rename(columns={price_col: "close"}, inplace=True)
-
-        if volume_col_name in merged.columns:
-            merged[volume_col_name] = pd.to_numeric(merged[volume_col_name], errors="coerce")
-            plot_df["volume"] = merged[volume_col_name]
         
-        plot_df.dropna(subset=["close"], inplace=True)
-    
-        if plot_df.empty:
-            st.warning("⚠️ 無法顯示圖表：資料可能缺失")
-        else:
-            fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
-            st.plotly_chart(fig, use_container_width=True)
+        # st.write("symbols_df columns", symbols_df.columns.tolist())
 
-        # 顯示資料表
-        merged_zh = merged[["date", price_col_name, "usd_to_twd", f"{symbol_name}_twd"]].copy()
-        merged_zh.columns = ["日期", "價格（美元)", "匯率", "價格（台幣)"]
+        if selected.currency == converted_currency:
+            # 不需換算，已是目標幣別
+            price_col = price_col_name
+            currency_label = f"價格（{converted_currency}）"
+            plot_df = aapl_df[["date", price_col]].copy()
+            plot_df.rename(columns={price_col: "close"}, inplace=True)
     
-        if volume_col_name in merged.columns:
-            merged_zh["成交量"] = merged[volume_col_name]
+            if volume_col_name in aapl_df.columns:
+                aapl_df[volume_col_name] = pd.to_numeric(aapl_df[volume_col_name], errors="coerce")
+                plot_df["volume"] = aapl_df[volume_col_name]
     
-        if converted_currency == "TWD":
-            show_cols = ["日期", "價格（台幣)", "匯率"]
+            plot_df.dropna(subset=["close"], inplace=True)
+            if plot_df.empty:
+                st.warning("⚠️ 無法顯示圖表：資料可能缺失")
+            else:
+                fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
+                st.plotly_chart(fig, use_container_width=True)
+    
+            # 顯示資料表
+            merged_zh = aapl_df[["date", price_col_name]].copy()
+            merged_zh.columns = ["日期", f"價格（{converted_currency})"]
+            if volume_col_name in aapl_df.columns:
+                merged_zh["成交量"] = aapl_df[volume_col_name]
+            st.dataframe(merged_zh.tail(10), use_container_width=True)
+    
         else:
-            show_cols = ["日期", "價格（美元)", "匯率"]
-        if "成交量" in merged_zh.columns:
-            show_cols.append("成交量")
+            # 處理匯率
+            usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
+            if "adj_close" in usd_twd_df.columns:
+                usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
+            elif "close" in usd_twd_df.columns:
+                usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
+            else:
+                st.warning("⚠️ 無法找到 USD/TWD 匯率欄位")
+                usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])
+        
+            usd_twd_df["date"] = pd.to_datetime(usd_twd_df["date"]).dt.date
+            merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
+            merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
+        
+            # 根據 converted_currency 決定要顯示哪種計價
+            if converted_currency == "TWD":
+                price_col = f"{symbol_name}_twd"
+                currency_label = "價格（台幣)"
+            else:
+                price_col = price_col_name
+                currency_label = "價格（美元)"
+        
+            # 處理 plot_df
+            merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
+            plot_df = merged[["date", price_col]].copy()
+            plot_df.rename(columns={price_col: "close"}, inplace=True)
     
-        st.dataframe(merged_zh[show_cols].tail(10), use_container_width=True)
+            if volume_col_name in merged.columns:
+                merged[volume_col_name] = pd.to_numeric(merged[volume_col_name], errors="coerce")
+                plot_df["volume"] = merged[volume_col_name]
+            
+            plot_df.dropna(subset=["close"], inplace=True)
+        
+            if plot_df.empty:
+                st.warning("⚠️ 無法顯示圖表：資料可能缺失")
+            else:
+                fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
+                st.plotly_chart(fig, use_container_width=True)
+    
+            # 顯示資料表
+            merged_zh = merged[["date", price_col_name, "usd_to_twd", f"{symbol_name}_twd"]].copy()
+            merged_zh.columns = ["日期", "價格（美元)", "匯率", "價格（台幣)"]
+        
+            if volume_col_name in merged.columns:
+                merged_zh["成交量"] = merged[volume_col_name]
+        
+            if converted_currency == "TWD":
+                show_cols = ["日期", "價格（台幣)", "匯率"]
+            else:
+                show_cols = ["日期", "價格（美元)", "匯率"]
+            if "成交量" in merged_zh.columns:
+                show_cols.append("成交量")
+        
+            st.dataframe(merged_zh[show_cols].tail(10), use_container_width=True)
 
 # -----------------------------------
 #            計算指標
