@@ -3,12 +3,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
+import json
+import time
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from datetime import datetime, timedelta
 from modules import auto_update, indicators
-from modules.db_utils import get_symbols, get_price_data, load_data
+from modules.db_utils import get_symbols, get_price_data, load_data, save_user_preference
 from modules.plot_utils import plot_price_volume
 
 if "compare_mode" not in st.session_state:
@@ -54,6 +56,48 @@ else:
 if st.sidebar.button("📈 多標的比較"):
     st.session_state.compare_mode = True
 
+# 儲存格式選擇器放在 popover 裡
+with st.sidebar.popover("💾 儲存偏好設定"):
+    st.markdown("### 選擇儲存格式")
+    save_format = st.radio("請選擇：", ["JSON", "SQLite"], horizontal=True)
+    save_btn = st.button("確認儲存")
+
+# 點擊確認後執行儲存邏輯
+PREF_DB_PATH = 'user_preferences.db'
+
+if save_btn:
+    user_pref = {
+        "symbol": selected.symbol,
+        "symbol_name": selected.name,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "currency": converted_currency,
+        "category": category
+    }
+    
+    if save_btn:
+        if save_format == "JSON":
+            json_str = json.dumps(user_pref, ensure_ascii=False, indent=2)
+            st.sidebar.success("✅ 準備下載 JSON，請點下方按鈕")
+            st.sidebar.download_button(
+                label="⬇️ 點此下載 JSON",
+                data=json_str,
+                file_name="user_preference.json",
+                mime="application/json"
+            )
+        elif save_format == "SQLite" and save_btn:
+            db_path = save_user_preference(user_pref)
+            time.sleep(2)
+    
+            with open('data/user_preferences.db', 'rb') as f:
+                db_data = f.read()
+            st.sidebar.download_button(
+                label="⬇️ 下載偏好設定 (SQLite)",
+                data=db_data,
+                file_name="user_preference.db",
+                mime="application/octet-stream"
+            )
+        
 df = get_price_data(selected.id, start_date, end_date)
 aapl_df = df[["date", "close", "volume"]].copy()
 
@@ -450,6 +494,6 @@ if st.session_state.compare_mode:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    if st.button("🔙 返回單一標的分析"):
+    if st.button("🔙 關閉多標的分析"):
         st.session_state.compare_mode = False
         st.rerun()

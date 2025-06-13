@@ -85,7 +85,7 @@ def fetch_and_save_data(cursor, conn, targets):
     for target in targets:
         print(f"▶ 擷取 {target['symbol']} 資料中...")
         df = yf.download(target["symbol"], start=start_date, end=end_date, auto_adjust=False)
-
+        
         print(f"欄位：{df.columns.tolist()}")
         print(f"原始資料筆數：{len(df)}")
     
