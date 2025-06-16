@@ -7,7 +7,9 @@ import json
 import time
 import sys
 import os
+import io
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from modules.pdf_export import generate_pdf_report
 from datetime import datetime, timedelta
 from modules import auto_update, indicators
 from modules.db_utils import get_symbols, get_price_data, load_data, save_user_preference
@@ -56,47 +58,16 @@ else:
 if st.sidebar.button("📈 多標的比較"):
     st.session_state.compare_mode = True
 
-# 儲存格式選擇器放在 popover 裡
-with st.sidebar.popover("💾 儲存偏好設定"):
+with st.sidebar.popover("💾 儲存偏好設定(單一標的)"):
     st.markdown("### 選擇儲存格式")
-    save_format = st.radio("請選擇：", ["JSON", "SQLite"], horizontal=True)
-    save_btn = st.button("確認儲存")
+    save_pref_format = st.radio("請選擇：", ["JSON", "SQLite"], horizontal=True)
+    save_pref_btn = st.button("確認儲存")
 
-# 點擊確認後執行儲存邏輯
-PREF_DB_PATH = 'user_preferences.db'
+with st.sidebar.popover("💾 匯出設定(單一標的)"):
+    st.markdown("### 選擇匯出格式")
+    export_format = st.radio("請選擇：", ["Excel", "PDF"], horizontal=True)
+    export_btn = st.button("確認匯出")
 
-if save_btn:
-    user_pref = {
-        "symbol": selected.symbol,
-        "symbol_name": selected.name,
-        "start_date": str(start_date),
-        "end_date": str(end_date),
-        "currency": converted_currency,
-        "category": category
-    }
-    
-    if save_btn:
-        if save_format == "JSON":
-            json_str = json.dumps(user_pref, ensure_ascii=False, indent=2)
-            st.sidebar.success("✅ 準備下載 JSON，請點下方按鈕")
-            st.sidebar.download_button(
-                label="⬇️ 點此下載 JSON",
-                data=json_str,
-                file_name="user_preference.json",
-                mime="application/json"
-            )
-        elif save_format == "SQLite" and save_btn:
-            db_path = save_user_preference(user_pref)
-            time.sleep(2)
-    
-            with open('data/user_preferences.db', 'rb') as f:
-                db_data = f.read()
-            st.sidebar.download_button(
-                label="⬇️ 下載偏好設定 (SQLite)",
-                data=db_data,
-                file_name="user_preference.db",
-                mime="application/octet-stream"
-            )
         
 df = get_price_data(selected.id, start_date, end_date)
 aapl_df = df[["date", "close", "volume"]].copy()
@@ -377,6 +348,128 @@ if not df_ind.empty:
 
 else:
     st.warning("⚠️ 查無資料，請確認資料庫中是否有該標的歷史資料。")
+
+# -----------------------------------
+#            儲存 Json & SQLite
+# -----------------------------------
+
+# 點擊確認後執行儲存邏輯
+PREF_DB_PATH = 'user_preferences.db'
+
+if save_pref_btn:
+    user_pref = {
+        "symbol": selected.symbol,
+        "symbol_name": selected.name,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "currency": converted_currency,
+        "category": category
+    }
+    
+    if save_pref_format == "JSON":
+        json_str = json.dumps(user_pref, ensure_ascii=False, indent=2)
+        st.sidebar.success("✅ 準備下載 JSON，請點下方按鈕")
+        st.sidebar.download_button(
+            label="⬇️ 點此下載 JSON",
+            data=json_str,
+            file_name="user_preference.json",
+            mime="application/json"
+        )
+    elif save_pref_format == "SQLite" and save_pref_btn:
+        db_path = save_user_preference(user_pref)
+        time.sleep(2)
+    
+        with open('data/user_preferences.db', 'rb') as f:
+            db_data = f.read()
+        st.sidebar.download_button(
+            label="⬇️ 下載偏好設定 (SQLite)",
+            data=db_data,
+            file_name="user_preference.db",
+            mime="application/octet-stream"
+        )
+
+# -----------------------------------
+#            匯出 Excel / PDF
+# -----------------------------------
+
+# 匯出共用：價格資料與 daily_returns
+df = get_price_data(selected.id, start_date, end_date)
+df["date"] = pd.to_datetime(df["date"])
+df = df.dropna(subset=["close"])
+fig = plot_price_volume(df)
+df.set_index("date", inplace=True)
+
+
+# 計算報酬率與統計
+daily_returns = df["close"].pct_change().dropna()
+
+acc_return = indicators.cumulative_return(daily_returns)
+annual_return = indicators.annualized_return(daily_returns)
+volatility = indicators.annualized_volatility(daily_returns)
+mdd = indicators.max_drawdown(daily_returns)
+
+stats_df = pd.DataFrame([{
+    "指標": ["累積報酬率", "年化報酬率", "年化波動率", "最大回落（MDD）"],
+    "數值": [acc_return, annual_return, volatility, mdd]
+}]).explode(["指標", "數值"])
+
+# merged_zh 是你的主資料 DataFrame（若你有換算匯率的邏輯要先做）
+merged_zh = df.reset_index()[["date", "close", "volume"]].rename(
+    columns={"date": "Date", "close": "Price_USD", "volume": "Volume"}
+)
+
+
+if export_btn:
+    if export_format == "PDF":
+        if daily_returns is None or len(daily_returns) == 0:
+            st.sidebar.error("⚠️ 無法匯出 PDF：daily_returns 沒有資料。")
+        else:
+            pdf_buffer = generate_pdf_report(acc_return, annual_return, volatility, mdd, fig)
+
+            st.sidebar.success("✅ PDF 產生成功")
+            st.sidebar.download_button(
+                label="⬇️ 下載 PDF",
+                data=pdf_buffer,
+                file_name=f"{selected.symbol}_report.pdf",
+                mime="application/pdf"
+            )
+    elif export_format == "Excel":
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            # 寫入報酬統計表
+            stats_df.to_excel(writer, sheet_name='報酬統計', index=False)
+            workbook = writer.book
+            worksheet = writer.sheets['報酬統計']
+            
+            # 設定格式
+            bold = workbook.add_format({'bold': True})
+            percent_fmt = workbook.add_format({'num_format': '0.00%'})
+            worksheet.set_column('A:A', 20, bold)
+            worksheet.set_column('B:B', 18, percent_fmt)
+    
+            # 檢查是否有台幣價格與匯率欄位
+            if "ExchangeRate" in merged_zh.columns and "Price_TWD" in merged_zh.columns:
+                merged_zh = merged_zh[["Date", "Price_USD", "ExchangeRate", "Price_TWD", "Volume"]]
+            else:
+                merged_zh = merged_zh[["Date", "Price_USD", "Volume"]]
+
+    
+            # 寫入每日價格資料
+            merged_zh.to_excel(writer, sheet_name='每日價格資料', index=False)
+            worksheet2 = writer.sheets['每日價格資料']
+            worksheet2.set_column(0, len(merged_zh.columns)-1, 15)
+    
+            for idx, col in enumerate(merged_zh.columns):
+                worksheet2.set_column(idx, idx, 20)
+        output.seek(0)
+    
+        st.sidebar.success("✅ 準備下載 Excel，請點下方按鈕")
+        st.sidebar.download_button(
+            label="⬇️ 匯出 Excel",
+            data=output,
+            file_name=f"{selected.symbol}_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # -----------------------------------
 #            多標的收比較
