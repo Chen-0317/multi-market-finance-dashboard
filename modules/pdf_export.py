@@ -1,49 +1,37 @@
 from fpdf import FPDF
-import io
+from io import BytesIO
+import os
 
-class PDF(FPDF):
-    def header(self):
-        self.set_font("Arial", "B", 12)
-        self.cell(0, 10, "財務報告", ln=True, align='C')
-
-    def chapter_title(self, title):
-        self.set_font("Arial", "B", 12)
-        self.cell(0, 10, title, ln=True, align='L')
-        self.ln(5)
-
-    def chapter_body(self, text):
-        self.set_font("Arial", "", 11)
-        self.multi_cell(0, 10, text)
-        self.ln()
-
-def generate_pdf_report(acc_return, annual_return, volatility, mdd, fig):
-    """
-    產生包含報酬統計與圖表的 PDF，並回傳 BytesIO 物件
-    """
-    pdf = PDF()
+def generate_pdf_report(acc_return, annual_return, volatility, mdd, fig, merged_zh):
+    pdf = FPDF()
     pdf.add_page()
 
-    # 報酬統計區塊
-    pdf.chapter_title("📊 報酬統計指標")
-    pdf.chapter_body(
-        f"""累積報酬率: {acc_return:.2%}
-年化報酬率: {annual_return:.2%}
-年化波動率: {volatility:.2%}
-最大回落（MDD）: {mdd:.2%}"""
-    )
+    # 字型路徑（msjh.ttf 放在 /fonts 資料夾下）
+    font_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fonts", "msjh.ttf"))
+    pdf.add_font("MSJH", "", font_path, uni=True)
+    pdf.set_font("MSJH", size=14)
+    pdf.cell(200, 10, txt="財務報表", ln=True, align="C")
+    pdf.ln(10)
 
-    # 儲存圖表成圖片
-    fig_path = "temp_chart.png"
-    fig.write_image(fig_path)
+    pdf.set_font("MSJH", size=12)
+    pdf.cell(200, 10, txt=f"累積報酬率：{acc_return:.2%}", ln=True)
+    pdf.cell(200, 10, txt=f"年化報酬率：{annual_return:.2%}", ln=True)
+    pdf.cell(200, 10, txt=f"年化波動率：{volatility:.2%}", ln=True)
+    pdf.cell(200, 10, txt=f"最大回落（MDD）：{mdd:.2%}", ln=True)
 
-    # 插入圖表圖片
-    pdf.chapter_title("📈 價格走勢圖")
-    pdf.image(fig_path, w=170)
+    # 匯出 Plotly 圖表為圖片（使用的是 plotly）
+    img_buf = BytesIO()
+    fig.write_image(img_buf, format="png")
+    img_buf.seek(0)
+    pdf.image(img_buf, x=10, y=None, w=180)
 
-    # 匯出 PDF 為 BytesIO（需用 encode）
-    pdf_buffer = io.BytesIO()
-    pdf_data = pdf.output(dest='S').encode('latin1')
-    pdf_buffer.write(pdf_data)
-    pdf_buffer.seek(0)
+    # 表格資料
+    pdf.ln(10)
+    pdf.set_font("MSJH", size=10)
+    pdf.cell(200, 10, txt="每日價格（前5筆）", ln=True)
+    for _, row in merged_zh.head(5).iterrows():
+        row_text = " / ".join([f"{col}：{str(row[col])}" for col in merged_zh.columns])
+        pdf.multi_cell(0, 8, row_text)
 
-    return pdf_buffer
+    pdf_bytes = pdf.output(dest='S').encode('latin1')
+    return BytesIO(pdf_bytes)

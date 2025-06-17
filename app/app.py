@@ -424,12 +424,17 @@ if export_btn:
         if daily_returns is None or len(daily_returns) == 0:
             st.sidebar.error("⚠️ 無法匯出 PDF：daily_returns 沒有資料。")
         else:
-            pdf_buffer = generate_pdf_report(acc_return, annual_return, volatility, mdd, fig)
+            with st.spinner("📄 產生 PDF 中..."): 
+                # print(f"type(fig) = {type(fig)}")
+                pdf_data = generate_pdf_report(
+                    acc_return, annual_return, volatility, mdd,
+                    fig, merged_zh
+                )
 
             st.sidebar.success("✅ PDF 產生成功")
             st.sidebar.download_button(
                 label="⬇️ 下載 PDF",
-                data=pdf_buffer,
+                data=pdf_data,
                 file_name=f"{selected.symbol}_report.pdf",
                 mime="application/pdf"
             )
