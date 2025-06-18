@@ -82,7 +82,7 @@ streamlit run app/app.py
    - **年化波動率**（Annualized Volatility）  
    - **最大回落**（Max Drawdown）  
 6. 按下返回按鈕可回到單一標的分析模式。  
-
+7. 依據使用者，可以選擇 JSON / SQLite / Excel / PDF 進行匯出/下載
 ---
 
 ## 依賴套件
