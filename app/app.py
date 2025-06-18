@@ -426,9 +426,10 @@ if export_btn:
         else:
             with st.spinner("📄 產生 PDF 中..."): 
                 # print(f"type(fig) = {type(fig)}")
+                # print(merged_zh.head(5).to_dict(orient="records"))
                 pdf_data = generate_pdf_report(
                     acc_return, annual_return, volatility, mdd,
-                    fig, merged_zh
+                    merged_zh
                 )
 
             st.sidebar.success("✅ PDF 產生成功")

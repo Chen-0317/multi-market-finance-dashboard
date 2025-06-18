@@ -27,11 +27,14 @@ finance-visualization/
 │   └── app.py               # 主程式入口 (Streamlit 應用)
 ├── data/
 │   └── finance_data.db      # SQLite 資料庫
+├── fonts/
+│   └── msjh.ttf             # 微軟正黑體
 ├── modules/                 # 自訂模組
 │   ├── check_data.py        # 檢查與預覽資料庫內容
 │   ├── auto_update.py       # 金融資料自動下載與更新模組
 │   ├── db_utils.py          # 資料庫連線與查詢工具
 │   ├── indicators.py        # 技術指標（MA、RSI、MACD）計算
+│   ├── pdf_export.py        # 匯出PDF
 │   └── plot_utils.py        # 使用 Plotly 製作圖表的輔助函式
 ├── sql/
 │   ├── create_tables.sql    # 建立資料表結構（symbols、price_data）
@@ -89,6 +92,9 @@ streamlit run app/app.py
 - plotly  
 - sqlite3
 - numpy
+- os
+- matplotlib
+- matplotlib.pyplot
 
 ---
 
