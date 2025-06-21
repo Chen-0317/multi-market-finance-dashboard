@@ -95,6 +95,7 @@ streamlit run app/app.py
 - os
 - matplotlib
 - matplotlib.pyplot
+- matplotlib.dates
 
 ---
 

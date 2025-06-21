@@ -1,6 +1,8 @@
 import os
 import matplotlib
+import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from fpdf import FPDF
 from io import BytesIO
 from matplotlib import font_manager
@@ -84,22 +86,28 @@ def generate_pdf_report(acc_return, annual_return, volatility, mdd, merged_zh):
             pdf.cell(60, 8, right, ln=True)
 
     # ✅ 新增：繪製 Matplotlib 圖表（如價格走勢圖）
+    merged_zh["Date"] = pd.to_datetime(merged_zh["Date"])
+
     fig, ax = plt.subplots(figsize=(6, 3))  # 寬6英寸、高3英寸
 
     font_path = os.path.join(os.path.dirname(__file__), "../fonts/msjh.ttf")
     my_font = font_manager.FontProperties(fname=font_path)
     matplotlib.rcParams['font.family'] = my_font.get_name()
 
-    if "Date" in merged_zh.columns and "Price_USD" in merged_zh.columns:
-        ax.plot(merged_zh["Date"], merged_zh["Price_USD"], linewidth=1)
-        ax.set_title("價格走勢圖（Price_USD）", fontproperties=my_font)
+    if "Date" in merged_zh.columns and "Price_TWD" in merged_zh.columns:
+        ax.plot(merged_zh["Date"], merged_zh["Price_TWD"], linewidth=1)
+        ax.set_title("價格走勢圖（Price_TWD）", fontproperties=my_font)
         ax.set_xlabel("日期", fontproperties=my_font)
-        ax.set_ylabel("價格（美元）", fontproperties=my_font)
+        ax.set_ylabel("價格（台幣）", fontproperties=my_font)
         ax.tick_params(axis="x", rotation=45)
         ax.grid(True)
 
         # 格式化 y 軸價格
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:.1f}"))
+
+        # 設置 X 軸日期格式 - 以月為主，標籤以季度顯示
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))  # 每3個月一標
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
         # 把圖儲存到 BytesIO
         buf = BytesIO()
@@ -121,6 +129,6 @@ def generate_pdf_report(acc_return, annual_return, volatility, mdd, merged_zh):
         if pdf.get_y() + 10 > 270:
             pdf.add_page()
             pdf.set_font("MSJH", "", 12)
-        pdf.cell(0, 10, "⚠️ 無法繪製價格走勢圖：缺少 'Date' 或 'Price_USD' 欄位", ln=True)
+        pdf.cell(0, 10, "⚠️ 無法繪製價格走勢圖：缺少 'Date' 或 'Price_TWD' 欄位", ln=True)
 
     return BytesIO(pdf.output(dest="S"))

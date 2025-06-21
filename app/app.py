@@ -54,7 +54,7 @@ if pricing_currency == "台幣計價":
     converted_currency = "TWD"
 else:
     converted_currency = "USD"
-
+    
 if st.sidebar.button("📈 多標的比較"):
     st.session_state.compare_mode = True
 
@@ -133,19 +133,7 @@ if not st.session_state.compare_mode:
         aapl_df['date'] = pd.to_datetime(aapl_df['date']).dt.date
         usd_twd_df['date'] = pd.to_datetime(usd_twd_df['date']).dt.date
         
-        # ✅ 標準化欄位名稱
-        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
-        usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
-
-        # st.write("✅ aapl_df 預覽", aapl_df.head())
-        # st.write("✅ usd_twd_df 預覽", usd_twd_df.head())
-        # st.write("✅ 匯率欄位名稱", usd_twd_df.columns.tolist())
-        # st.write("✅ 匯率資料長度", len(usd_twd_df))
-        
         merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
-
-        # st.write("✅ 合併後 preview", merged.head(10))
-        # st.write("✅ 合併後匯率 NaN 數量：", merged["usd_to_twd"].isna().sum())
 
         merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
     
@@ -197,86 +185,69 @@ if not st.session_state.compare_mode:
         
         # st.write("symbols_df columns", symbols_df.columns.tolist())
 
-        if selected.currency == converted_currency:
-            # 不需換算，已是目標幣別
-            price_col = price_col_name
-            currency_label = f"價格（{converted_currency}）"
-            plot_df = aapl_df[["date", price_col]].copy()
-            plot_df.rename(columns={price_col: "close"}, inplace=True)
-    
-            if volume_col_name in aapl_df.columns:
-                aapl_df[volume_col_name] = pd.to_numeric(aapl_df[volume_col_name], errors="coerce")
-                plot_df["volume"] = aapl_df[volume_col_name]
-    
-            plot_df.dropna(subset=["close"], inplace=True)
-            if plot_df.empty:
-                st.warning("⚠️ 無法顯示圖表：資料可能缺失")
-            else:
-                fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
-                st.plotly_chart(fig, use_container_width=True)
-    
-            # 顯示資料表
-            merged_zh = aapl_df[["date", price_col_name]].copy()
-            merged_zh.columns = ["日期", f"價格（{converted_currency})"]
-            if volume_col_name in aapl_df.columns:
-                merged_zh["成交量"] = aapl_df[volume_col_name]
-            st.dataframe(merged_zh.tail(10), use_container_width=True)
-    
+        # 對欄位標準化與匯率表處理
+        usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
+        if "adj_close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
+        elif "close" in usd_twd_df.columns:
+            usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
         else:
-            # 處理匯率
-            usd_twd_df.columns = [col.lower() for col in usd_twd_df.columns]
-            if "adj_close" in usd_twd_df.columns:
-                usd_twd_df.rename(columns={"adj_close": "usd_to_twd"}, inplace=True)
-            elif "close" in usd_twd_df.columns:
-                usd_twd_df.rename(columns={"close": "usd_to_twd"}, inplace=True)
-            else:
-                st.warning("⚠️ 無法找到 USD/TWD 匯率欄位")
-                usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])
+            st.warning("⚠️ 無法找到 USD/TWD 匯率欄位")
+            usd_twd_df = pd.DataFrame(columns=["date", "usd_to_twd"])
         
-            usd_twd_df["date"] = pd.to_datetime(usd_twd_df["date"]).dt.date
-            merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
-            merged[f"{symbol_name}_twd"] = merged[price_col_name] * merged["usd_to_twd"]
+        # 時間欄位標準化
+        usd_twd_df["date"] = pd.to_datetime(usd_twd_df["date"]).dt.date
+        aapl_df["date"] = pd.to_datetime(aapl_df["date"]).dt.date
         
-            # 根據 converted_currency 決定要顯示哪種計價
-            if converted_currency == "TWD":
-                price_col = f"{symbol_name}_twd"
-                currency_label = "價格（台幣)"
-            else:
-                price_col = price_col_name
-                currency_label = "價格（美元)"
+        # 合併資料
+        merged = pd.merge(aapl_df, usd_twd_df, on="date", how="left")
         
-            # 處理 plot_df
-            merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
-            plot_df = merged[["date", price_col]].copy()
-            plot_df.rename(columns={price_col: "close"}, inplace=True)
-    
-            if volume_col_name in merged.columns:
-                merged[volume_col_name] = pd.to_numeric(merged[volume_col_name], errors="coerce")
-                plot_df["volume"] = merged[volume_col_name]
-            
-            plot_df.dropna(subset=["close"], inplace=True)
+        # 統一處理價格與成交量欄位名稱
+        merged["price_twd"] = merged[price_col_name]
+        merged["price_usd"] = merged["price_twd"] / merged["usd_to_twd"]
         
-            if plot_df.empty:
-                st.warning("⚠️ 無法顯示圖表：資料可能缺失")
-            else:
-                fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
-                st.plotly_chart(fig, use_container_width=True)
-    
-            # 顯示資料表
-            merged_zh = merged[["date", price_col_name, "usd_to_twd", f"{symbol_name}_twd"]].copy()
-            merged_zh.columns = ["日期", "價格（美元)", "匯率", "價格（台幣)"]
+        if volume_col_name in merged.columns:
+            merged[volume_col_name] = pd.to_numeric(merged[volume_col_name], errors="coerce")
         
-            if volume_col_name in merged.columns:
-                merged_zh["成交量"] = merged[volume_col_name]
+        # 根據使用者選擇的幣別決定要顯示哪一個價格欄位
+        if converted_currency == "TWD":
+            price_col = "price_twd"
+            currency_label = "價格（台幣）"
+        else:
+            price_col = "price_usd"
+            currency_label = "價格（美元）"
         
-            if converted_currency == "TWD":
-                show_cols = ["日期", "價格（台幣)", "匯率"]
-            else:
-                show_cols = ["日期", "價格（美元)", "匯率"]
-            if "成交量" in merged_zh.columns:
-                show_cols.append("成交量")
+        # 處理圖表資料
+        merged[price_col] = pd.to_numeric(merged[price_col], errors="coerce")
+        plot_df = merged[["date", price_col]].copy()
+        plot_df.rename(columns={price_col: "close"}, inplace=True)
         
-            st.dataframe(merged_zh[show_cols].tail(10), use_container_width=True)
+        if volume_col_name in merged.columns:
+            plot_df["volume"] = merged[volume_col_name]
+        
+        plot_df.dropna(subset=["close"], inplace=True)
+        
+        # 繪圖
+        if plot_df.empty:
+            st.warning("⚠️ 無法顯示圖表：資料可能缺失")
+        else:
+            fig = plot_price_volume(plot_df, title=f"{symbol_name}（{currency_label}）")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # 顯示資料表格
+        merged_zh = merged[["date", price_col, "usd_to_twd"]].copy()
+        merged_zh.columns = ["日期", currency_label, "匯率"]
+        
+        if volume_col_name in merged.columns:
+            merged_zh["成交量"] = merged[volume_col_name]
+        
+        show_cols = ["日期", currency_label, "匯率"]
+        if "成交量" in merged_zh.columns:
+            show_cols.append("成交量")
+        
+        st.dataframe(merged_zh[show_cols].tail(10), use_container_width=True)
+
+
 
 # -----------------------------------
 #            計算指標
@@ -353,52 +324,23 @@ else:
 #            儲存 Json & SQLite
 # -----------------------------------
 
-# 點擊確認後執行儲存邏輯
-PREF_DB_PATH = 'user_preferences.db'
-
-if save_pref_btn:
-    user_pref = {
-        "symbol": selected.symbol,
-        "symbol_name": selected.name,
-        "start_date": str(start_date),
-        "end_date": str(end_date),
-        "currency": converted_currency,
-        "category": category
-    }
-    
-    if save_pref_format == "JSON":
-        json_str = json.dumps(user_pref, ensure_ascii=False, indent=2)
-        st.sidebar.success("✅ 準備下載 JSON，請點下方按鈕")
-        st.sidebar.download_button(
-            label="⬇️ 點此下載 JSON",
-            data=json_str,
-            file_name="user_preference.json",
-            mime="application/json"
-        )
-    elif save_pref_format == "SQLite" and save_pref_btn:
-        db_path = save_user_preference(user_pref)
-        time.sleep(2)
-    
-        with open('data/user_preferences.db', 'rb') as f:
-            db_data = f.read()
-        st.sidebar.download_button(
-            label="⬇️ 下載偏好設定 (SQLite)",
-            data=db_data,
-            file_name="user_preference.db",
-            mime="application/octet-stream"
-        )
-
-# -----------------------------------
-#            匯出 Excel / PDF
-# -----------------------------------
-
-# 匯出共用：價格資料與 daily_returns
+# 1. 取得價格資料與匯率資料
 df = get_price_data(selected.id, start_date, end_date)
-df["date"] = pd.to_datetime(df["date"])
-df = df.dropna(subset=["close"])
-fig = plot_price_volume(df)
-df.set_index("date", inplace=True)
+df_fx = get_price_data(int(usdtwd_id), start_date, end_date)
 
+# 2. 日期轉換（確保一致性）
+df["date"] = pd.to_datetime(df["date"]).dt.normalize()  
+df_fx["date"] = pd.to_datetime(df_fx["date"]).dt.normalize()  
+
+# 3. 保留匯率欄位並改名
+df = df.dropna(subset=["close"])
+df_fx = df_fx[["date", "close"]].rename(columns={"close": "usd_to_twd"})
+
+# 4. 合併資料（left join，把匯率接到 df 上）
+df_merged = pd.merge(df, df_fx, on="date", how="left")
+
+# 5. 設定 index
+df.set_index("date", inplace=True)
 
 # 計算報酬率與統計
 daily_returns = df["close"].pct_change().dropna()
@@ -413,11 +355,97 @@ stats_df = pd.DataFrame([{
     "數值": [acc_return, annual_return, volatility, mdd]
 }]).explode(["指標", "數值"])
 
-# merged_zh 是你的主資料 DataFrame（若你有換算匯率的邏輯要先做）
-merged_zh = df.reset_index()[["date", "close", "volume"]].rename(
-    columns={"date": "Date", "close": "Price_USD", "volume": "Volume"}
-)
+# ✅ 包含 日期、美元計價、匯率、台幣計價、成交量
+merged_zh = df_merged.reset_index().copy()
+merged_zh["Date"] = pd.to_datetime(merged_zh["date"]).dt.strftime("%Y-%m-%d")
+merged_zh["Price_TWD"] = merged_zh["close"].round(1)
 
+# 匯率欄位
+if "usd_to_twd" not in merged_zh.columns:
+    merged_zh["usd_to_twd"] = 0.0  # 若無匯率，補上預設值（或改為 np.nan）
+
+merged_zh["ExchangeRate"] = merged_zh["usd_to_twd"].round(4)
+
+merged_zh["Price_USD"] = (merged_zh["Price_TWD"] / merged_zh["ExchangeRate"]).round(1)
+
+# 成交量欄位
+if "volume" in merged_zh.columns:
+    merged_zh["Volume"] = merged_zh["volume"].round(0).astype(int)
+else:
+    merged_zh["Volume"] = 0  # 或 np.nan
+
+# 選出需要的 5 個欄位
+merged_zh = merged_zh[["Date", "Price_USD", "ExchangeRate", "Price_TWD", "Volume"]]
+
+
+# 點擊確認後執行儲存邏輯
+PREF_DB_PATH = 'user_preferences.db'
+
+if save_pref_btn:
+    # 四個統計指標取小數點後 1 位
+    user_pref = {
+        "symbol": selected.symbol,
+        "symbol_name": selected.name,
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "currency": converted_currency,
+        "category": category,
+        "acc_return": round(acc_return, 1),
+        "annual_return": round(annual_return, 1),
+        "volatility": round(volatility, 1),
+        "mdd": round(mdd, 1)
+    }
+
+    df_price = merged_zh.copy()
+
+    # 將中文欄位名改成英文，方便匯出
+    df_price.rename(columns={
+        "日期": "Date",
+        "股價（美元)": "Price_USD",
+        "匯率": "ExchangeRate",
+        "股價（台幣)": "Price_TWD",
+        "成交量": "Volume"
+    }, inplace=True)
+    
+    # 加入每日價格資料（merged_zh 已經有 Date / Price_USD / Volume）
+    df_price = merged_zh.copy()
+    df_price["Date"] = pd.to_datetime(df_price["Date"]).dt.strftime("%Y-%m-%d")
+    df_price["Price_USD"] = df_price["Price_USD"].round(1)
+    df_price["Price_TWD"] = df_price["Price_TWD"].round(1)
+    df_price["ExchangeRate"] = df_price["ExchangeRate"].round(4)
+    df_price["Volume"] = df_price["Volume"].round(0).astype(int)
+
+    # 放入 JSON 中的 "price_data" 欄位
+    user_pref["price_data"] = df_price.to_dict(orient="records")
+
+    # 輸出 JSON 格式
+    if save_pref_format == "JSON":
+        json_str = json.dumps(user_pref, ensure_ascii=False, indent=2)
+        st.sidebar.success("✅ 準備下載 JSON，請點下方按鈕")
+        st.sidebar.download_button(
+            label="⬇️ 點此下載 JSON",
+            data=json_str,
+            file_name="user_preference.json",
+            mime="application/json"
+        )
+
+    # SQLite 儲存（可保留原寫法）
+    elif save_pref_format == "SQLite":
+        db_path = save_user_preference(user_pref)
+        time.sleep(2)
+        with open('data/user_preferences.db', 'rb') as f:
+            db_data = f.read()
+        st.sidebar.download_button(
+            label="⬇️ 下載偏好設定 (SQLite)",
+            data=db_data,
+            file_name="user_preference.db",
+            mime="application/octet-stream"
+        )
+
+
+# -----------------------------------
+#            匯出 Excel / PDF
+# -----------------------------------
 
 if export_btn:
     if export_format == "PDF":
