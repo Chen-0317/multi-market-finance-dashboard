@@ -4,3 +4,4 @@ plotly
 matplotlib
 os
 matplotlib.pyplot
+matplotlib.dates
