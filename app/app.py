@@ -457,7 +457,7 @@ if export_btn:
                 # print(merged_zh.head(5).to_dict(orient="records"))
                 pdf_data = generate_pdf_report(
                     acc_return, annual_return, volatility, mdd,
-                    fig
+                    merged_zh
                 )
 
             st.sidebar.success("✅ PDF 產生成功")
